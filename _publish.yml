@@ -1,0 +1,8 @@
+- source: M08-Advanced DataTypes.qmd
+  quarto-pub:
+    - id: bac9b042-d9da-43d6-8b51-1f6dd2f136b8
+      url: https://jmjung.quarto.pub/m08-advanced-data-type
+- source: M08-Customizable Tables-gtsummary.qmd
+  quarto-pub:
+    - id: e5300b9c-218b-490f-b574-38a2e848df7c
+      url: https://jmjung.quarto.pub/publishable-summary-table-with-gtsummary

@@ -1,0 +1,2110 @@
+---
+title: "M08: Advanced Data Type"
+author: "Jae Jung"
+date: "`r Sys.time()`"
+format: 
+  html: 
+    theme: cosmo
+    toc: true
+    toc-location: right-body
+    toc_depth: 4
+    code-fold: false
+    code-line-numbers: true
+    code-link: true
+    code-tools: true
+    number-sections: true
+    embed-resources: true
+execute: 
+  freeze: auto
+  echo: fenced
+  warning: false
+---
+
+
+# Topics
+
+1. `tibble`
+2. Strings with `stringr`
+3. Factors with `forcats`
+3. Dates and Times with `lubridate`
+
+# Packages
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(nycflights13) # date-time data
+library(lubridate)
+```
+
+# Tibbles
+
+- Tibble is "opinionated data frames that make working in the tidyverse a little easier." 
+
+- If you're already familiar with data.frame(), note that tibble() does much less: 
+    * it never changes the type of the inputs (e.g. it never converts strings to factors!), 
+    * it never changes the names of variables, and 
+    * it never creates row names.
+
+- [vignette("tibble")](https://rdrr.io/r/base/library.html)
+
+```{r}
+library(tidyverse)
+```
+
+## How to create a tibble?
+
+### Using tibble() function
+
+```{r}
+# tibble() is from tibble package, which is part of tidyverse
+tibble(
+  x = 1:5, 
+  y = 1, 
+  z = x ^ 2 + y
+)
+```
+
+::: callout-important
+* It's possible for a tibble to have column names that are not valid R variable names, aka `non-syntactic` names. 
+* To refer to these variables, you need to surround them with `backticks` (`)
+
+:::
+
+```{r}
+tb <- tibble(
+  `:)` = "smile", 
+  ` ` = "space",
+  `2000` = "number"
+)
+tb
+```
+
+* You'll also need the `backticks` when working with these variables in other packages, like ggplot2, dplyr, and tidyr.
+
+### Using `tribble()`, short for `transposed` tibble.
+
+* `tribble()` is customised for data entry in code: 
+    - column headings are defined by formulas (i.e. they start with ~), and
+    - entries are separated by commas. 
+* This makes it possible to lay out small amounts of data in easy to read form.
+
+```{r}
+tribble(
+  ~x, ~y, ~z,
+  #--|--|----   # comment to show where the header is
+  "a", 2, 3.6,
+  "b", 1, 8.5
+)
+```
+
+## Tibbles vs. data.frame
+
+* There are **two main differences** in the usage of a tibble vs. a classic data.frame: (1) printing and (2) subsetting.
+
+### Printing
+
+* shows only the first *10 rows*, and all the columns that fit on screen. 
+* In addition to its name, each column reports *its type*, a nice feature borrowed from str():
+
+```{r}
+tibble(
+  a = lubridate::now() + runif(1e3) * 86400,
+  b = lubridate::today() + runif(1e3) * 30,
+  c = 1:1e3,
+  d = runif(1e3),
+  e = sample(letters, 1e3, replace = TRUE)
+)
+```
+
+::: callout-tip
+runif(n, min = 0, max = 1) provides random deviates with uniform distribution
+:::
+
+* Printing customization
+
+    * First, you can explicitly print() the data frame and control the number of rows (n) and the width of the display. 
+    * `width = Inf` will display all columns:
+    
+```{r}
+nycflights13::flights %>% 
+  print(n = 10, width = Inf)
+
+# using view()
+nycflights13::flights %>% 
+  View()
+```
+
+### Subsetting
+
+```{r}
+df <- tibble(
+  x = runif(5),
+  y = rnorm(5)
+)
+df
+
+# Extract by name
+df$x
+
+df[["x"]]
+
+# Extract by position
+df[[1]]
+
+# To use these in a pipe, you'll need to use the special placeholder .:
+df %>% .$x
+
+df %>% .[["x"]]
+
+```
+
+#### Native operator
+
+::: callout-caution
+> Using native operator: it doesn't wrap LHS up. Thus use `anonymous function`
+:::
+
+```{r}
+df |> (\(x) x$x)()
+df |> (\(x) x[["x"]])()
+```
+
+> *cf* Subsetting with deplyr
+
+```{r}
+df |> pull(x)
+```
+
+
+## Interacting with older code
+
+* Some older functions don't work with tibbles. 
+* If you encounter one of these functions, use `as.data.frame()` to turn a tibble back to a data.frame:
+
+```{r}
+class(as.data.frame(tb))
+```
+
+
+
+# Strings (with stringr package) and regex
+
+* stringr::cheat sheet: <https://github.com/rstudio/cheatsheets/blob/main/strings.pdf>
+* regular expression cheat sheet: <https://github.com/rstudio/cheatsheets/blob/main/regex.pdf>
+
+## Introduction
+>
+* The focus of this chapter will be on *regular expressions*, or *`regex`* for short. 
+* Regular expressions are useful because strings usually contain unstructured or semi-structured data, and `regex` are a concise language for describing *patterns* in strings. 
+
+```{r}
+library(tidyverse)
+```
+
+## String basics
+>
+* You can create strings with either `single quotes` or `double quotes`. 
+* Unlike other languages, there is no difference in behavior. 
+* Use `"`, unless you want to create a string that contains multiple `"`.
+
+```{r}
+string1 <- "This is a string"
+string2 <- 'If I want to include a "quote" inside a string, I use single quotes'
+
+# If you forget to close a quote, you'll see +, the continuation character: 
+# If this happen to you, press Escape and try again!
+```
+
+### Use `\` to "escape" 
+>
+* To include a literal single or double quote in a string you can use \ to "escape" it:
+
+```{r}
+double_quote <- "\"" # or '"'
+double_quote # the printed representation shows the escapes.
+cat(double_quote) # cat() evaluate it first and print it.
+
+"\""
+cat("\"")
+
+'"'
+cat('"')
+
+single_quote <- '\'' # or "'"
+single_quote # the printed representation shows the escapes.
+cat(single_quote)
+
+"'"
+cat("'")
+
+'\''
+cat('\'') # the same as above.
+
+"\\"
+cat("\\")
+
+
+x <- c("\"", "\\")
+x # the printed representation shows the escapes as they are.
+
+cat(x) 
+
+# cf. 
+writeLines(x) # To see the raw contents of the string in different lines
+```
+
+### Special characters
+
+```{r}
+# ?"'"
+```
+
+> Quotes
+
+>
+- Three types of quotes are part of the syntax of R: `single` and `double` quotation marks and the `backtick` (or back quote, '???`???')
+- In addition, `backslash` is used to escape the following character inside character constants.
+- Single and double quotes delimit character constants. They can be used interchangeably but `double` quotes are *preferred* (and character constants are printed using double quotes), 
+- so single quotes are normally only used to delimit character constants containing double quotes.
+- Backslash is used to start an escape sequence inside character constants. Escaping a character not in the following table is an error.
+- Single quotes need to be escaped by backslash in single-quoted strings, and double quotes in double-quoted strings.
+
+```
+`\n` 	newline (aka 'line feed')
+`\r` 	carriage return
+`\t` 	tab
+`\b`  backspace
+`\a`  alert (bell)
+`\f`  form feed
+`\v`  vertical tab
+`\\`  backslash '???\???'
+`\'`  ASCII apostrophe '???'???'
+`\"`  ASCII quotation mark '???"???'
+`\``  ASCII grave accent (backtick) '???`???'
+```
+
+### String length
+>
+* Base R contains many functions to work with strings but we'll avoid them because they can be inconsistent, which makes them hard to remember. 
+* Instead, we'll use functions from `stringr`. These have more intuitive names, and all start with `str_`. 
+
+```{r}
+str_length(c("a", "R for data science", NA)) # number of characters in a string
+
+```
+
+### Combining strings
+
+#### `str_replace_na()`
+
+> Like most other functions in R, missing values are contagious. If you want them to print as "NA", use str_replace_na():
+
+```{r}
+x <- c("abc", NA)
+x
+str_c("|-", x, "-|")
+str_c("|-", str_replace_na(x), "-|")
+```
+
+#### Objects of length 0
+
+> Objects of length 0 are silently dropped. This is particularly useful in conjunction with if:
+
+```{r}
+name <- "Hadley"
+time_of_day <- "morning"
+birthday <- FALSE
+
+str_length(name)
+str_length(birthday)
+
+str_c(
+  "Good ", time_of_day, " ", name,
+  if (birthday) " and HAPPY BIRTHDAY",
+  "."
+)
+```
+
+#### collapse
+
+> To collapse a vector of strings into a single string, use collapse
+
+```{r}
+str_c(c("x", "y", "z"))
+str_c(c("x", "y", "z"), collapse = ", ")
+str_c(c("x", "y", "z"), collapse = ",")
+str_c(c("x", "y", "z"), collapse = "")
+str_c(c("x", "y", "z"), collapse = " ")
+```
+
+### Subsetting strings
+
+#### `str_sub()`
+
+> str_sub(string, start = 1L, end = -1L)
+
+```{r}
+x <- c("Apple", "Banana", "Pear")
+str_sub(x, 1, 3) # argument: start, end
+
+# negative numbers count backwards from end
+str_sub(x, end = -1)
+str_sub(x, 1, -1)
+str_sub(x, -3, -1)
+```
+
+::: callout-tip
+> `str_sub()` won't fail if the string is too short: it will just return as much as possible:
+:::
+
+```{r}
+str_sub("a", 1, 5)
+```
+
+> You can also use the assignment form of `str_sub()` to modify strings
+
+```{r}
+str_sub(x, 1, 1)
+str_sub(x, 1, 1) <- str_to_lower(str_sub(x, 1, 1))
+x
+```
+
+### Locales
+>
+- `str_to_upper()`
+- `str_to_title()`
+- `str_to_lower()`
+
+```{r}
+# Turkish has two i's: with and without a dot, and it
+# has a different rule for capitalising them:
+str_to_upper(c("i", "i"))
+
+str_to_upper(c("i", "i"), locale = "tr") 
+```
+
+::: callout-note
+>
+* The base R `order()` and `sort()` functions sort strings using the current locale.
+* If you want robust behaviour across different computers, you may want to use `str_sort()` and `str_order()` which take an additional `locale argument:`
+:::
+
+```{r}
+x <- c("apple", "eggplant", "banana")
+
+str_sort(x, locale = "en")  # English
+str_sort(x, locale = "haw") # Hawaiian
+```
+
+### `str_wrap()`
+
+> str_wrap(string, width = 80, indent = 0, exdent = 0)
+
+```{r}
+thanks_path <- file.path(R.home("doc"), "THANKS")
+thanks <- str_c(readLines(thanks_path), collapse = "\n")
+thanks <- word(thanks, 1, 3, fixed("\n\n"))
+cat(str_wrap(thanks), "\n")
+cat(str_wrap(thanks, width = 40), "\n")
+cat(str_wrap(thanks, width = 60, indent = 2), "\n")
+cat(str_wrap(thanks, width = 60, exdent = 2), "\n")
+cat(str_wrap(thanks, width = 0, exdent = 2), "\n")
+```
+
+### `str_trim()`
+
+> str_trim(string, side = c("both", "left", "right"))
+
+```{r}
+cat("\nString with trailing and leading white space\n")
+cat("\n\nString with trailing and leading white space\n\n")
+
+str_trim("  String with trailing and leading white space\t")
+str_trim("\n\nString with trailing and leading white space\n\n")
+
+```
+
+### `str_squish()`
+
+> str_squish(string)
+
+```{r}
+str_squish("  String with trailing,  middle, and leading white space\t")
+str_squish("\n\nString with excess,  trailing and leading white   space\n\n")
+```
+
+## Matching patterns with regular expressions
+>
+* `Regex` are a very terse language that allow you to describe patterns in strings. 
+* To learn regular expressions, we'll use `str_view()`. 
+* They take a character vector and a regular expression, and show you how they match. 
+* Once you've mastered pattern matching, you'll learn how to apply those ideas with various `stringr` functions.
+
+### Basic matches
+>
+* str_view shows the first match
+    - str_view(string, pattern, match = NA)
+  
+#### (1) exact strings
+
+```{r}
+x <- c("apple", "banana", "pear")
+str_view(x, "an")
+```
+
+#### (2) `.`
+>
+* `.` matches any character (except a newline):
+
+```{r}
+str_view(x, ".a.")
+```
+
+```{r}
+# To create the regular expression, we need \\
+dot <- "\\."
+
+# But the expression itself only contains one:
+writeLines(dot)
+cat(dot)
+
+# And this tells R to look for an explicit `.`
+str_view(c("abc", "a.c", "bef"), "a\\.c")
+```
+
+```{r}
+x <- "a\\b"
+writeLines(x)
+
+str_view(x, "\\\\")
+```
+
+### Anchors
+>
+* By default, regular expressions will match any part of a string. 
+* It's often useful to anchor the regular expression so that it matches from the start or end of the string. 
+
+#### `^` and `$`
+>
+* You can use:
+    * ^ to match the start of the string.
+    * $ to match the end of the string.
+
+```{r}
+x <- c("apple", "banana", "pear")
+str_view(x, "^a")
+str_view(x, "a$")
+```
+
+>
+* To force a regular expression to only match a complete string, anchor it with both ^ and $:
+
+```{r}
+x <- c("apple pie", "apple", "apple cake")
+str_view(x, "apple")
+str_view(x, "^apple$")
+```
+
+#### boundary with `\b`
+>
+* You can also match the boundary between words with \b. 
+* search for \bsum\b to avoid matching summarise, summary, rowsum and so on.
+
+```{r}
+y <- c("summarize", "summary", "sum", "rowsum")
+str_view(y, "\\bsum\\b")
+```
+
+
+### Chracter classes and alternatives
+>
+- There are a number of special patterns that match more than one character. You've already seen ., which matches any character apart from a newline. There are four other useful tools:
+    * \d: matches any digit.
+    * \s: matches any whitespace (e.g. space, tab, newline).
+    * [abc]: matches a, b, or c.
+    * [^abc]: matches anything except a, b, or c.
+- Remember, to create a regular expression containing `\d` or `\s`, you'll need to escape the `\` for the string, so you'll type `\\d` or `\\s`.
+- A character class containing a single character is a nice alternative to backslash escapes when you want to include a single metacharacter in a regex. 
+
+```{r}
+# Look for a literal character that normally has special meaning in a regex
+str_view(c("abc", "a.c", "a*c", "a c"), "a[.]c") # same as below.
+str_view(c("abc", "a.c", "a*c", "a c"), "a\\.c")
+
+str_view(c("abc", "a.c", "a*c", "a c"), ".[*]c") # same as below
+str_view(c("abc", "a.c", "a*c", "a c"), ".\\*c")
+
+str_view(c("abc", "a.c", "a*c", "a c"), "a[ ]") # same as below
+str_view(c("abc", "a.c", "a*c", "a c"), "a\\ ")
+```
+
+#### Alternate
+
+```{r}
+str_view(c("grey", "gray"), "gr(e|a)y") # same as below
+str_view(c("grey", "gray"), "grey|gray")
+```
+
+### Repetition (= Quantifiers)
+>
+The next step up in power involves controlling how many times a pattern matches:
+
+* `?`: 0 or 1
+* `+`: 1 or more
+* `*`: 0 or more
+
+```{r}
+x <- "1888 is the longest year in Roman numerals: MDCCCLXXXVIII"
+str_view(x, "CC?")
+str_view(x, "CC+")
+str_view(x, "CC*") #greedy
+
+str_view(x, 'C[LX]+') #[LX]: matches either L or X
+
+str_extract(x, "CC?") # greedy
+str_extract(x, "CC+") # greedy
+str_extract(x, 'C[LX]+') # greedy
+```
+
+> You can also specify the number of matches precisely:
+
+* {n}: exactly n
+* {n,}: n or more
+* {,m}: at most m
+* {n,m}: between n and m
+
+```{r}
+str_view(x, "C{2}") # 
+str_view(x, "C{2,}") # greedy
+str_view(x, "C{2,3}") # greedy
+
+str_extract(x, "C{2}")
+str_extract(x, "C{2,}")
+str_extract(x, "C{2,3}")
+
+```
+
+::: callout-tip
+* By default these matches are *"greedy"*: they will match the longest string possible. 
+* You can make them *"lazy"*, matching the shortest string possible by putting a `?` after them. 
+* This is an advanced feature of regular expressions, but it's useful to know that it exists:
+    * `??`: 0 or 1, prefer 0.
+    * `+?`: 1 or more, match as few times as possible.
+    * `?`: 0 or more, match as few times as possible.
+    * `{n,}?`: n or more, match as few times as possible.
+    * `{n,m}?`: between n and m, , match as few times as possible, but at least n.
+:::
+
+```{r}
+x <- "1888 is the longest year in Roman numerals: MDCCCLXXXVIII"
+str_view(x, "CC?")
+# cf
+str_view(x, "CC??")
+
+str_view(x, 'C{2,3}?') # lazy
+
+str_view(x, 'C[LX]+?') # lazy
+str_view(x, 'C[LX]+') # greedy
+
+str_extract(x, c("C{2,3}", "C{2,3}?"))
+str_extract(x, c("C[LX]+", "C[LX]+?"))
+
+```
+
+### Grouping and backreferences
+>
+* Parentheses also create a numbered `capturing group` (number 1, 2 etc.). 
+* A capturing group stores the part of the string matched by the part of the regular expression inside the parentheses. 
+* You can refer to the same text as previously matched by a capturing group with `backreferences`, like \1, \2 etc
+
+```{r}
+str_view(fruit, "(..)\\1", match = TRUE) # "\\1" means group 1
+
+str_view(fruit, "(.)\\1", match = TRUE) #"(.)" means one word
+str_view(fruit, "(..)\1", match = TRUE) # wrong. needs \\
+
+str_view(fruit, "(.)(.)\\2\\1", match = TRUE) 
+```
+
+### **Look arounds**
+
+> These assertions look ahead or behind the current match without "consuming" any characters (i.e. changing the input position).
+
+* `(?=...)`: `positive look-ahead` assertion. Matches if ... matches at the current input.
+  + *followed by*
+
+* `(?!...)`: `negative look-ahead` assertion. Matches if ... does not match at the current input.
+  + not followed by 
+
+* `(?<=...)`: `positive look-behind` assertion. Matches if ... matches text preceding the current position, with the last character of the match being the character just before the current position. Length must be bounded (i.e. no * or +).
+  + *preceded by*
+
+* `(?<!...)`: `negative look-behind` assertion. Matches if ... does not match text preceding the current position. Length must be bounded (i.e. no * or +).
+  + not preceded by
+
+> These are useful when you want to check that a pattern exists, but you don't want to include it in the result:
+
+```{r}
+x <- c("1 piece", "2 pieces", "3")
+str_extract(x, "\\d+(?= pieces?)") # positive look-ahead assertion: followed by
+
+x1 <- c("piece 1", "pieces 2", "3")
+str_extract(x1, "(?<=pieces?) \\d") # positive look-behind assertion: preceded by
+
+y <- c("100", "$400")
+str_extract(y, "(?<=\\$)\\d+") # positive look-behind assertion: preceded by
+```
+
+## Tools
+
+### `str_detect()`
+
+#### (1) Overview
+>
+* Detect matches. 
+* It returns a logical vector(TRUE = 1; FALSE = 0) the same length as the input
+
+```{r}
+x <- c("apple", "banana", "pear")
+str_detect(x, "e")
+```
+
+#### (2) counting and proportion
+>
+* That makes sum() and mean() useful if you want to answer questions about matches across a larger vector:
+
+```{r}
+# How many common words start with t in words dataset.
+class(words)
+as_tibble(words)
+sum(str_detect(words, "^t"))
+
+# What proportion of common words end with a vowel?
+mean(str_detect(words, "[aeiou]$"))
+```
+
+::: callout-note
+* When you have `complex logical conditions` (e.g. match a or b but not c unless d) it's often easier to combine multiple str_detect() calls with logical operators, rather than trying to create a single regular expression. 
+
+* For example, here are two ways to find all words that don't contain any vowels
+:::
+
+```{r}
+# Find all words containing at least one vowel, and negate
+no_vowels_1 <- !str_detect(words, "[aeiou]")
+
+# Find all words consisting only of consonants (non-vowels)
+no_vowels_2 <- str_detect(words, "^[^aeiou]+$")
+
+identical(no_vowels_1, no_vowels_2) # check if they are the same.
+```
+
+#### (3) `str_subset()`
+>
+* A common use of str_detect() is to select the elements that match a pattern. 
+* You can do this with `logical subsetting`, or the convenient `str_subset()` wrapper:
+
+```{r}
+str_detect(words, "x$")
+words[str_detect(words, "x$")] # logical subsetting
+str_subset(words, "x$") # wrapper of str_detect()
+```
+
+#### (4) with `filter()` in data frame
+
+```{r}
+df <- tibble(
+  word = words, 
+  i = seq_along(word)
+)
+df
+
+df %>% 
+  filter(str_detect(word, "x$"))
+```
+
+#### (5) `str_count()`
+>
+* `str_count()`: rather than a simple yes or no, it tells you how many matches there are in a string:
+
+```{r}
+x <- c("apple", "banana", "pear")
+str_count(x, "a")
+
+# On average, how many vowels per word?
+mean(str_count(words, "[aeiou]"))
+
+str_count(words, "[aeiou]") |> 
+  mean()
+```
+
+#### (6) str_count() with mutate()
+
+```{r}
+df %>% 
+  mutate(
+    vowels = str_count(word, "[aeiou]"),
+    consonants = str_count(word, "[^aeiou]") # matches anything except a, e, i, o, u.
+  )
+```
+
+#### (7) No pattern overlapping
+>
+* Note that matches never overlap. For example, in "abababa", how many times will the pattern "aba" match? 
+    * Regular expressions say two, not three:
+
+```{r}
+str_count("abababa", "aba")
+
+str_view("abababa", "aba")
+```
+
+::: callout-tip
+* many `stringr` functions come in pairs: one function works with a single match, and the other works with all matches. The second function will have the suffix _all.
+:::
+
+### `str_extract()`
+
+#### (1) Overview
+>
+* Extract matches
+* Note that `str_extract()` only extracts the first match. 
+
+```{r}
+# sentences dataset from stringr: Sample character vectors for practicing string manipulations.
+class(sentences)
+length(sentences)
+head(sentences)
+```
+
+> Goal: Find all sentences that contain a colour. 
+
+```{r}
+colors <- c("red", "orange", "yellow", "green", "blue", "purple")
+color_match <- str_c(colors, collapse = "|")
+color_match
+
+has_color <- str_subset(sentences, color_match)
+has_color
+
+matches <- str_extract(has_color, color_match)
+head(matches)
+```
+
+#### (2) `str_extract_all()`
+
+```{r}
+more <- sentences[str_count(sentences, color_match) > 1]
+str_view(more, color_match)
+
+# single match allows you to use simpler data structure
+str_extract(more, color_match)
+
+#To get all matches, use str_extract_all(). It returns a list:
+str_extract_all(more, color_match)
+
+#If you use simplify = TRUE, str_extract_all() will return a matrix with short matches expanded to the same length as the longest:
+str_extract_all(more, color_match, simplify = TRUE)
+
+x <- c("a", "a b", "a b c")
+str_extract_all(x, "[a-z]", simplify = TRUE)
+```
+
+### `Grouped matches`
+
+>
+* You can also use `parentheses` to extract parts of a complex match. 
+* For example, imagine we want to extract nouns from the sentences. 
+    * As a heuristic, we'll look for any word that comes after "a" or "the". 
+    * Defining a "word" in a regular expression is a little tricky, so here I use a simple approximation: 
+    * a sequence of at least one character that isn't a space.
+
+#### (1) str_extract()
+
+> It gives us the complete match
+
+```{r}
+noun <- "(a|the) ([^ ]+)"
+
+has_noun <- sentences %>%
+  str_subset(noun) %>%
+  head(10)
+has_noun %>% 
+  str_extract(noun)
+```
+
+#### (2) `str_matches()` 
+>
+* gives each individual component
+* it returns a matrix, with one column for the complete match followed by one column for each group
+
+```{r}
+has_noun %>% 
+  str_match(noun)
+
+has_noun %>% 
+  str_match_all(noun)
+```
+
+#### (3) tidyr::`extract()`
+
+> If your data is in a tibble, it's often easier to use tidyr::extract().
+> 
+* It works like `str_match()` but requires you to name the matches, which are then placed in new columns:
+* Usage
+
+  ```
+  extract(
+    data,
+    col,
+    into,
+    regex = "([[:alnum:]]+)",
+    remove = TRUE,
+    convert = FALSE,
+    ...
+  )
+  ```
+  
+```{r}
+tibble(sentence = sentences) %>% 
+  tidyr::extract(
+    sentence, c("article", "noun"), "(a|the) ([^ ]+)", 
+    remove = FALSE # If TRUE, remove input column from output data frame.
+  )
+```
+
+### Replacing matches: `str_replace()`
+
+#### (1) Simple
+>
+* `str_replace()` and `str_replace_all()` allow you to replace matches with new strings. 
+* The simplest use is to replace a pattern with a fixed string:
+
+```{r}
+x <- c("apple", "pear", "banana")
+str_replace(x, "[aeiou]", "-")
+
+str_replace_all(x, "[aeiou]", "-")
+```
+
+#### (2) Named vector
+>
+* With `str_replace_all()` you can perform multiple replacements by supplying a named vector.
+
+```{r}
+x <- c("1 house", "2 cars", "3 people")
+x
+str_replace_all(x, c("1" = "one", "2" = "two", "3" = "three"))
+```
+
+#### (3) Insert components of match
+
+>
+* Instead of replacing with a fixed string you can use` backreferences `to insert components of the match. 
+* Ex) flip the order of the second and third words.
+
+```{r}
+sentences %>% 
+  head(5)
+
+sentences %>% 
+  str_replace("([^ ]+) ([^ ]+) ([^ ]+)", "\\1 \\3 \\2") %>% 
+  head(5)
+```
+
+
+### Splitting: `str_split()`
+
+#### (1) Sentences to words
+
+> split a string up into pieces. For example, we could split sentences into words:
+
+```{r}
+# returns a list
+sentences %>%
+  head(5) %>% 
+  str_split("") # one letter at a time
+
+sentences %>%
+  head(5) %>% 
+  str_split(" ") # one word at a time
+
+sentences %>%
+  head(5) %>% 
+  str_split("  ") # one sentence at a time
+```
+
+#### (2) Splitting as an element
+
+```{r}
+# extract an element
+"a|b|c|d" %>% 
+  str_split("\\|") %>% 
+  .[[1]] # extract first element of the list
+```
+
+#### (3) Splitting as a matrix
+
+> Return a matrix with "simplify = TRUE"
+
+```{r}
+sentences %>%
+  head(5) %>% 
+  str_split(" ", simplify = TRUE)
+
+fields <- c("Name: Hadley", "Country: NZ", "Age: 35")
+fields
+str(fields)
+
+fields %>% str_split(": ", n = 2, simplify = TRUE) %>%  #n=2: indicate a maximum number
+  tibble()
+```
+
+#### (4)` boudnary ("word")`
+
+> Instead of splitting up strings by patterns, you can also split up by character, line, sentence and word boundary()s:
+
+```
+boundary(
+  type = c("character", "line_break", "sentence", "word"),
+  skip_word_none = NA,
+```
+
+```{r}
+x <- "This is a sentence.  This is another sentence."
+str_view(x, boundary("word"))
+str_split(x, boundary("word")) # better outcome than the one below
+str_split(x, " ") # not as good as above
+
+words <- c("These are   some words.")
+str_count(words, boundary("word"))
+str_split(words, " ")[[1]]
+str_split(words, boundary("word"))[[1]]
+
+```
+
+### Find matches with `str_locate()`
+
+>
+* str_locate() and str_locate_all() give you the *starting and ending* positions of each match. 
+* These are particularly useful when none of the other functions does exactly what you want. 
+* You can use str_locate() to *find the matching pattern*, str_sub() to extract and/or modify them.
+
+```{r}
+fruit <- c("apple", "banana", "pear", "pineapple")
+str_locate(fruit, "$")
+str_locate(fruit, "a")
+str_locate(fruit, "e")
+str_locate(fruit, c("a", "b", "p", "p"))
+
+str_locate_all(fruit, "a")
+str_locate_all(fruit, "e")
+str_locate_all(fruit, c("a", "b", "p", "p"))
+
+# Find location of every character
+str_locate_all(fruit, "")
+```
+
+## Other types of pattern
+
+### `regex()`
+
+> When you use a pattern that's a string, it's automatically wrapped into a call to regex()
+
+```{r}
+# The regular call:
+str_view(fruit, "nana")
+# Is shorthand for
+str_view(fruit, regex("nana"))
+```
+
+> You can use the other arguments of regex() to control details of the match
+
+#### (1) `ignore_case = TRUE`
+
+> allows characters to match either their uppercase or lowercase forms. This always uses the current locale.
+
+```{r}
+bananas <- c("banana", "Banana", "BANANA")
+str_view(bananas, "banana")
+
+str_view(bananas, regex("banana", ignore_case = TRUE))
+```
+
+#### (2) `multiline = TRUE` 
+> allows ^ and $ to match the start and end of each line rather than the start and end of the complete string.
+
+```{r}
+x <- "Line 1\nLine 2\nLine 3"
+str_extract_all(x, "^Line")[[1]]
+
+str_extract_all(x, regex("^Line", multiline = TRUE))[[1]]
+
+```
+
+#### (3) `comments = TRUE` 
+
+> allows you to use comments and white space to make complex regular expressions more understandable.
+
+```{r}
+phone <- regex("
+  \\(?     # optional opening parens
+  (\\d{3}) # area code
+  [) -]?   # optional closing parens, space, or dash
+  (\\d{3}) # another three numbers
+  [ -]?    # optional space or dash
+  (\\d{3}) # three more numbers
+  ", comments = TRUE)
+
+str_match("514-791-8141", phone)
+```
+
+## Other uses of regular expressions
+
+> There are two useful function in base R that also use regular expressions:
+
+### `apropos()` 
+
+>
+* searches all objects available from the global environment. 
+* This is useful if you can't quite remember the *name of the function*.
+
+```{r}
+apropos("replace")
+apropos("max")
+```
+
+### `dir()`
+>
+* lists all the files in a directory. 
+* The pattern argument takes a regular expression and only returns file names that match the pattern. 
+* For example, you can find all the quarto Markdown files in the current directory with the following.
+
+```{r}
+dir(pattern = "\\.qmd$")
+```
+
+# Factors with forcats
+
+> Factors with forcats:: cheat Sheet: <http://www.flutterbys.com.au/stats/downloads/slides/figure/factors.pdf>
+
+
+## Introduction
+
+> Historically, factors were much easier to work with than characters. As a result, many of the functions in base R automatically convert characters to factors. This means that factors often crop up in places where they're not actually helpful. Fortunately, you don't need to worry about that in the tidyverse, and can focus on situations where factors are genuinely useful.
+
+## Creating factors
+
+### (1) `factor()`
+```{r}
+x1 <- c("Dec", "Apr", "Jan", "Mar")
+month_levels <- c(
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+)
+
+y1 <- factor(x1, levels = month_levels)
+y1
+
+sort(y1)
+
+# any values not in the set will be silently converted to NA:
+x2 <- c("Dec", "Apr", "Jam", "Mar")
+y2 <- factor(x2, levels = month_levels)
+y2
+
+# If you omit the levels, they'll be taken from the data in alphabetical order:
+factor(x1)
+```
+
+### (2) readr::`parse_factor()`
+
+> If you want a warning, you can use readr::parse_factor().
+
+```{r}
+
+y2 <- readr::parse_factor(x2, levels = month_levels)
+y2
+```
+
+### (3) `unique()` or `fct_inorder()`
+
+> Sometimes you'd prefer that the order of the levels match the order of the first appearance in the data. You can do that when creating the factor by setting levels to unique(x), or after the fact, with fct_inorder():
+
+```{r}
+f1 <- factor(x1, levels = unique(x1))
+f1
+
+f2 <- x1 %>% factor() %>% fct_inorder()
+f2
+
+levels(f2) # function from base R
+```
+
+## Survey data
+
+```{r}
+gss_cat
+# ?gss_cat
+```
+
+```
+year: year of survey, 2000-2014
+age: age. Maximum age truncated to 89.
+marital: marital status
+race: race
+rincome: reported income
+partyid: party affiliation
+relig: religion
+denom: denomination
+tvhours: hours per day watching tv
+```
+
+```{r}
+skimr::skim(gss_cat)
+levels(gss_cat$race)
+
+# When factors are stored in a tibble, you can't see their levels so easily. 
+# One way to see them is with count():
+gss_cat %>%
+  count(race)
+
+# Also with a barplot
+ggplot(gss_cat, aes(race)) +
+  geom_bar()
+
+# By default, ggplot2 will drop levels that don't have any values. 
+# You can force them to display with:
+ggplot(gss_cat, aes(race)) +
+  geom_bar() +
+  scale_x_discrete(drop = FALSE)
+```
+
+>
+* These levels represent valid values that simply did not occur in this dataset. Unfortunately, dplyr doesn't yet have a drop option, but it will in the future.
+
+### Visualizating survey data: Exercise
+
+#### (1) rincome
+
+> 
+- Explore the distribution of rincome (reported income). 
+- What makes the default bar chart hard to understand? 
+- How could you improve the plot?
+
+```{r}
+gss_cat
+
+gss_cat %>% 
+  ggplot(aes(rincome)) +
+  geom_bar() +
+  coord_flip() +
+  scale_x_discrete(drop = FALSE)
+```
+
+#### (2) relig & partyid
+>
+What is the most common relig in this survey? What's the most common partyid?
+
+```{r}
+# most common religion
+gss_cat %>% 
+  ggplot(aes(relig)) +
+  geom_bar() +
+  coord_flip() +
+  scale_x_discrete(drop = FALSE)
+
+# most common party
+gss_cat %>% 
+  ggplot(aes(partyid)) +
+  geom_bar() +
+  coord_flip() +
+  scale_x_discrete(drop = FALSE)
+```
+
+#### (3) relgion ands donomination
+>
+Which relig does denom (denomination) apply to? How can you find out with a table? How can you find out with a visualisation?
+
+```{r}
+gss_cat %>% 
+  ggplot(aes(denom)) +
+  geom_bar() +
+  coord_flip() +
+  scale_x_discrete(drop = FALSE)
+
+# create a table and visualize it
+gss_cat %>% 
+  count(relig, denom) %>% 
+  #view() %>% 
+  ggplot(aes(relig, n, fill = denom)) +
+  geom_col() +
+  coord_flip() +
+  scale_x_discrete(drop = FALSE) #+
+  #facet_wrap(~ denom)
+```
+
+::: {.callout-note title="Answer"}
+Only protestants or Christians responded to deonomination questions.
+:::
+
+## Modifying factor order: 
+
+### `fct_reorder()`
+>
+* reorder factor based on a continuous variable
+
+#### (1) Reordering nominal (arbitrary) factors
+>
+* explore the average number of hours spent watching TV per day across religions:
+
+```{r}
+# hard to interpret the pattern of the relationship
+relig_summary <- gss_cat %>%
+  group_by(relig) %>%
+  summarise(
+    age = mean(age, na.rm = TRUE),
+    tvhours = mean(tvhours, na.rm = TRUE),
+    n = n() ) 
+
+relig_summary
+
+ggplot(relig_summary, aes(tvhours, relig)) + 
+  geom_point()
+
+# reorder the religion by its frequency
+ggplot(relig_summary, aes(tvhours, fct_reorder(relig, tvhours))) + 
+  geom_point()
+
+# It is better to move fct_reorder out of aes() and into a separate mutate() step.
+relig_summary %>%
+  mutate(relig = fct_reorder(relig, tvhours)) %>%
+  ggplot(aes(tvhours, relig)) +
+    geom_point()
+```
+
+#### (2) Reordering ordinal (principled) factors?
+
+> How average age varies across reported income level?
+
+```{r}
+rincome_summary <- gss_cat %>%
+  group_by(rincome) %>%
+  summarise(
+    age = mean(age, na.rm = TRUE),
+    tvhours = mean(tvhours, na.rm = TRUE),
+    n = n() ) 
+
+rincome_summary
+
+ggplot(rincome_summary, aes(age, fct_reorder(rincome, age))) + geom_point()
+```
+
+::: callout-warning
+*Here, arbitrarily reordering the levels isn't a good idea!* That's because rincome already has a principled order that we shouldn't mess with. Reserve `fct_reorder()` for factors whose levels are arbitrarily ordered.
+:::
+
+### `fct_relevel()`
+>
+* takes a factor, f, and then any number of levels that you want to move to the front of the line.
+
+```{r}
+ggplot(rincome_summary, aes(age, fct_relevel(rincome, "Not applicable"))) +
+  geom_point()
+
+# releveling in wrangling part
+gss_cat %>%
+  mutate(rincome = fct_relevel(rincome, "Not applicable")) %>% 
+  group_by(rincome) %>%
+  summarise(
+    age = mean(age, na.rm = TRUE),
+    tvhours = mean(tvhours, na.rm = TRUE),
+    n = n() ) %>% 
+  ggplot(aes(age, rincome)) +
+  geom_point()
+```
+
+### `fct_reorder2()`
+>
+* Reorders the factor by the y values associated with the largest x values. 
+* This makes the plot easier to read because the line colours line up with the legend.
+
+```{r}
+by_age <- gss_cat %>%
+  filter(!is.na(age)) %>%
+  count(age, marital) %>%
+  group_by(age) %>%
+  mutate(prop = n / sum(n))
+
+ggplot(by_age, aes(age, prop, colour = marital)) +
+  geom_line(na.rm = TRUE)
+
+# the line colors line up with the color legend.
+ggplot(by_age, aes(age, prop, colour = fct_reorder2(marital, age, prop))) +
+  geom_line() +
+  labs(colour = "Marital Status")
+```
+
+### `fct_infreq()` + `fct_rev()`
+>
+- `fct_infreq()`
+    - changes the order of levels by number of observations with each level (largest first)
+- `fct_rev()`
+    - reverse the order of levels.
+>
+* Used togehter both will order levels in increasing frequency.
+* this is the simplest type of reordering because it doesn't need any extra variables. 
+
+```{r}
+gss_cat %>%
+  mutate(marital = marital %>% fct_infreq()) %>%
+  ggplot(aes(marital)) +
+    geom_bar()
+         
+# barplot 1
+marital_order1 <- gss_cat %>%
+  mutate(marital = marital %>% fct_infreq() %>% fct_rev())
+
+gss_cat %>%
+  mutate(marital = marital %>% fct_infreq() %>% fct_rev()) %>%
+  ggplot(aes(marital)) +
+    geom_bar()
+
+# barplot 2
+marital_order2 <- gss_cat %>% 
+  mutate(marital = fct_infreq(marital),
+         marital = fct_rev(marital))
+
+gss_cat %>% 
+  mutate(marital = fct_infreq(marital),
+         marital = fct_rev(marital)) %>% 
+  ggplot(aes(marital)) +
+    geom_bar()
+
+# comparison
+levels(marital_order1$marital)
+levels(marital_order2$marital)
+```
+
+## Modifying factor levels
+> 
+* More powerful than changing the orders of the levels is changing their values.
+* This allows you to clarify labels for publication, and collapse levels for high-level displays.
+
+### `fct_recode`
+>
+* The most general and powerful tool is `fct_recode()`. 
+* It allows you to recode, or change, the value of each level.
+
+#### (1) recode it
+
+```{r}
+# The levels are terse and inconsistent. 
+gss_cat %>% count(partyid)
+
+# Let's tweak them to be longer and use a parallel construction.
+gss_cat %>%
+  mutate(partyid = fct_recode(partyid,
+    "Republican, strong"    = "Strong republican",
+    "Republican, weak"      = "Not str republican",
+    "Independent, near rep" = "Ind,near rep",
+    "Independent, near dem" = "Ind,near dem",
+    "Democrat, weak"        = "Not str democrat",
+    "Democrat, strong"      = "Strong democrat"
+  )) %>%
+  count(partyid)
+```
+>
+`fct_recode()` will leave levels that aren't explicitly mentioned as is, and will warn you if you accidentally refer to a level that doesn't exist.
+
+#### (2) Combine multiple levels into a new level
+>
+* To combine groups, you can assign multiple old levels to the same new level:
+
+```{r}
+gss_cat %>%
+  mutate(partyid = fct_recode(partyid,
+    "Republican, strong"    = "Strong republican",
+    "Republican, weak"      = "Not str republican",
+    "Independent, near rep" = "Ind,near rep",
+    "Independent, near dem" = "Ind,near dem",
+    "Democrat, weak"        = "Not str democrat",
+    "Democrat, strong"      = "Strong democrat",
+    "Other"                 = "No answer",
+    "Other"                 = "Don't know",
+    "Other"                 = "Other party"
+  )) %>%
+  count(partyid)
+```
+::: callout-warning
+*Note*: You must use this technique with care: if you group together categories that are truly different you will end up with misleading results.
+:::
+
+### `fct_collapse()`
+>
+* If you want to collapse a lot of levels, fct_collapse() is a useful variant of fct_recode().
+* For each new variable, you can provide a vector of old levels:
+
+```{r}
+gss_cat %>%
+  mutate(partyid = fct_collapse(partyid,
+    other = c("No answer", "Don't know", "Other party"),
+    rep = c("Strong republican", "Not str republican"),
+    ind = c("Ind,near rep", "Independent", "Ind,near dem"),
+    dem = c("Not str democrat", "Strong democrat")
+  )) %>%
+  count(partyid)
+```
+
+### `fct_lump()`
+>
+* Sometimes you just want to lump together all the small groups to make a plot or table simpler. That's the job of fct_lump():
+* The default behaviour is to progressively lump together the smallest groups, ensuring that the aggregate is still the smallest group. 
+
+```{r}
+# In this case it's not very helpful: it is true that the majority of Americans 
+# in this survey are Protestant, but we've probably over collapsed.
+gss_cat %>%
+  mutate(relig = fct_lump(relig)) %>%
+  count(relig)
+
+# Instead, we can use the n parameter to specify how many groups (excluding other) we want to keep:
+gss_cat %>%
+  mutate(relig = fct_lump(relig, n = 10)) %>%
+  count(relig, sort = TRUE) %>%
+  print(n = Inf)
+```
+
+### Excercise
+
+>
+1. How have the proportions of people identifying as Democrat, Republican, and Independent changed over time?
+2. How could you collapse rincome into a small set of categories?
+
+
+# Dates and Times with lubridate package
+
+## Introduction
+>
+Dates and times are hard because they have to reconcile two physical phenomena (the rotation of the Earth and its orbit around the sun) with a whole raft of geopolitical phenomena including months, time zones, and DST.
+
+### Prep
+
+```{r}
+library(tidyverse)
+
+library(lubridate)
+library(nycflights13)
+```
+
+## Creating date/times
+
+> There are three types of date/time data that refer to an instant in time:
+>
+* A date: Tibbles print this as <date>.
+* A time within a day: Tibbles print this as <time>.
+* A date-time is a date plus a time: it uniquely identifies an instant in time (typically to the nearest second). Tibbles print this as <dttm>. Elsewhere in R these are called POSIXct. 
+* we are only going to focus on dates and date-times as R doesn't have a native class for storing times. If you need one, you can use the hms package.
+
+```{r}
+# current date
+today()
+
+# current date-time
+now()
+```
+>
+Three ways to create a date/time:
+* From a string.
+* From individual date-time components.
+* From an existing date/time object.
+
+### From Strings
+>
+* Date/time data often comes as strings. 
+* one approach is to parsing strings into date-times in date-times. 
+* Another approach is to use the helpers provided by lubridate. 
+    * They automatically work out the format once you specify the order of the component. 
+    * To use them, identify the order in which year, month, and day appear in your dates, 
+    * then arrange "y", "m", and "d" in the same order. 
+    * That gives you the name of the lubridate function that will parse your date. 
+    * For example, see next.
+    
+#### (1) dates only
+```{r}
+ymd("2017-01-31")
+mdy("January 31st, 2017")
+dmy("31-Jan-2017")
+
+# These functions also take unquoted numbers.
+ymd(20170131)
+```
+
+#### (2) date-time
+>
+* To create a date-time, add an underscore and one or more of "h", "m", and "s" to the name of the parsing function.
+
+```{r}
+ymd_hms("2017-01-31 20:11:59")
+
+mdy_hm("01/31/2017 08:01")
+
+```
+
+#### (3) time zone
+>
+You can also force the creation of a date-time from a date by supplying a timezone:
+
+```{r}
+ymd(20170131, tz = "UTC") # Universal Time Coordinate: PST is -8 from UTC
+```
+
+### From Individual Components
+>
+* Instead of a single string, sometimes you'll have the individual components of the date-time spread across multiple columns.
+
+```{r}
+flights %>% 
+  select(year, month, day, hour, minute)
+```
+
+#### (1) make_date() / make_datetime()
+>
+* To create a date/time from this sort of input, use make_date() for dates, or make_datetime() for date-times:
+
+```{r}
+flights %>% 
+  select(year, month, day, hour, minute, sched_dep_time) %>% 
+  mutate(departure = make_datetime(year, month, day, hour, minute))
+```
+
+#### (2) Create flights_dt 
+```{r}
+make_datetime_100 <- function(year, month, day, time) {
+  make_datetime(year, month, day, time %/% 100, time %% 100)
+}
+
+flights_dt <- flights %>% 
+  filter(!is.na(dep_time), !is.na(arr_time)) %>% 
+  mutate(
+    dep_time = make_datetime_100(year, month, day, dep_time),
+    arr_time = make_datetime_100(year, month, day, arr_time),
+    sched_dep_time = make_datetime_100(year, month, day, sched_dep_time),
+    sched_arr_time = make_datetime_100(year, month, day, sched_arr_time)
+  ) %>% 
+  select(origin, dest, ends_with("delay"), ends_with("time"))
+
+flights_dt
+
+# visualize the distribution of departure times across the year
+flights_dt %>% 
+  ggplot(aes(dep_time)) + 
+  geom_freqpoly(binwidth = 86400) # 86400 seconds = 1 day
+
+60*60*24 # number of seconds in a day
+
+# distribution of departure time within a single day
+flights_dt %>% 
+  filter(dep_time < ymd(20130102)) %>% 
+  ggplot(aes(dep_time)) + 
+  geom_freqpoly(binwidth = 600) # 600 s = 10 minutes
+```
+
+::: callout-tip
+Note that when you use date-times in a numeric context (like in a histogram), 1 means 1 second, so a binwidth of 86400 means one day. For dates, 1 means 1 day.
+:::
+
+### From Other Types
+
+#### (1) `as_datetime()` / `as_date()`
+>
+You may want to switch between a date-time and a date. That's the job of as_datetime() and as_date()
+
+```{r}
+as_datetime(today())
+
+as_date(now())
+```
+> 
+* Sometimes you'll get date/times as numeric offsets from the "Unix Epoch", 1970-01-01. If the offset is in seconds, use as_datetime(); if it's in days, use as_date().
+
+```{r}
+as_datetime(60 * 60 * 10) # "Unix Epoch", 1970-01-01.
+
+as_date(365 * 10 + 2)
+```
+
+
+## Date-time components
+>
+Now that you know how to get date-time data into R's date-time data structures, let's explore what you can do with them. This section will focus on the accessor functions that let you get and set individual components. The next section will look at how arithmetic works with date-times.
+
+### Getting components
+
+```{r}
+datetime <- ymd_hms("2016-07-08 12:34:56")
+
+year(datetime)
+
+month(datetime)
+
+mday(datetime) # day of the month
+
+yday(datetime) # day of the year
+
+wday(datetime) # day of the week starting with Sunday
+
+wday(now()) 
+```
+>
+* For month() and wday() you can set label = TRUE to return the abbreviated name of the month or day of the week. 
+* Set abbr = FALSE to return the full name.
+
+```{r}
+month(datetime, label = TRUE)
+
+wday(datetime, label = TRUE, abbr = FALSE)
+```
+>
+* We can use wday() to see that more flights depart during the week than on the weekend:
+
+```{r}
+flights_dt %>% 
+  mutate(wday = wday(dep_time, label = TRUE)) %>% 
+  ggplot(aes(x = wday)) +
+    geom_bar()
+```
+>
+* There's an interesting pattern if we look at the average departure delay by minute within the hour. 
+* It looks like flights leaving in minutes 20-30 and 50-60 have much lower delays than the rest of the hour!
+
+```{r}
+flights_dt %>% 
+  mutate(minute = minute(dep_time)) %>% 
+  group_by(minute) %>% 
+  summarise(
+    avg_delay = mean(arr_delay, na.rm = TRUE),
+    n = n()) %>% 
+  ggplot(aes(minute, avg_delay)) +
+    geom_line()
+```
+>
+* Interestingly, if we look at the scheduled departure time we don't see such a strong pattern:
+
+```{r}
+sched_dep <- flights_dt %>% 
+  mutate(minute = minute(sched_dep_time)) %>% 
+  group_by(minute) %>% 
+  summarise(
+    avg_delay = mean(arr_delay, na.rm = TRUE),
+    n = n())
+
+ggplot(sched_dep, aes(minute, avg_delay)) +
+  geom_line()
+```
+
+### Rounding:
+
+#### (1) Basic
+>
+* floor_date(), round_date(), and ceiling_date()
+* Syntax
+
+```
+floor_date(
+  x,
+  unit = "seconds", 
+  week_start = getOption("lubridate.week.start", 7)
+  
+# unit: minute, hour, day, week, month, bimonth, quarter, season, halfyear and year
+```
+> 
+* the number of flights per week:
+
+```{r}
+flights_dt %>% 
+  count(week = floor_date(dep_time, "week")) %>% 
+  ggplot(aes(week, n)) +
+    geom_line()
+
+flights_dt %>% 
+  count(week = round_date(dep_time, "week")) %>% 
+  ggplot(aes(week, n)) +
+    geom_line()
+```
+
+#### (2) Exercise
+
+```{r}
+## print fractional seconds
+options(digits.secs = 6)
+
+x <- ymd_hms("2009-08-03 12:01:59.23")
+round_date(x, "second")
+round_date(x, "minute")
+round_date(x, "5 mins")
+round_date(x, "hour")
+round_date(x, "2 hours")
+round_date(x, "day")
+round_date(x, "week")
+round_date(x, "month")
+round_date(x, "bimonth")
+round_date(x, "quarter") == round_date(x, "3 months")
+round_date(x, "halfyear")
+round_date(x, "year")
+
+x <- ymd_hms("2009-08-03 12:01:59.23")
+floor_date(x, "second")
+floor_date(x, "minute")
+floor_date(x, "hour")
+floor_date(x, "day")
+floor_date(x, "week")
+floor_date(x, "month")
+floor_date(x, "bimonth")
+floor_date(x, "quarter")
+floor_date(x, "season")
+floor_date(x, "halfyear")
+floor_date(x, "year")
+
+x <- ymd_hms("2009-08-03 12:01:59.23")
+ceiling_date(x, "second")
+ceiling_date(x, "minute")
+ceiling_date(x, "5 mins")
+ceiling_date(x, "hour")
+ceiling_date(x, "day")
+ceiling_date(x, "week")
+ceiling_date(x, "month")
+ceiling_date(x, "bimonth") == ceiling_date(x, "2 months")
+ceiling_date(x, "quarter")
+ceiling_date(x, "season")
+ceiling_date(x, "halfyear")
+ceiling_date(x, "year")
+```
+
+
+### Setting components
+
+#### (1) Modifying date-time in place
+>
+* make a permanent change
+* use each accessor function to set the components of a date/time:
+
+```{r}
+(datetime <- ymd_hms("2016-07-08 12:34:56"))
+
+year(datetime) <- 2023 # permanent change
+datetime
+
+month(datetime) <- 3 
+datetime
+
+hour(datetime) <- hour(datetime) + 1
+datetime
+
+```
+
+#### (2) Create a new date-time with update()
+
+```{r}
+update(datetime, year = 2024, month = 2, mday = 2, hour =2) # not a permanent change
+datetime
+
+#If values are too big, they will roll-over:
+ymd("2023-02-01") %>% 
+  update(mday = 30)
+
+ymd("2023-02-01") %>% 
+  update(hour = 48)
+
+# show the distribution of flights across the course of the day for every day of the year:
+flights_dt %>% 
+  #arrange(desc(dep_time))
+  mutate(dep_hour = update(dep_time, yday = 1)) %>% #yday: the first day of the year
+  #arrange(desc(dep_hour))
+  ggplot(aes(dep_hour)) +
+  geom_freqpoly(binwidth = 300)
+```
+
+### Exercise
+
+#### (1) Distribution of flight times within a day
+>
+How does the distribution of flight times within a day change over the course of the year?
+
+```{r}
+# flights per hour for the entire year
+flights_dt %>% 
+  mutate(hour = hour(dep_time)) %>%
+  group_by(hour)%>%
+  summarize(numflights_per_hour = n())%>%
+  ggplot(aes(x = hour, y = numflights_per_hour)) +
+    geom_line()
+
+flights %>% 
+  filter(!is.na(dep_time)) %>% 
+  mutate(hour = dep_time %/% 100) %>%
+  group_by(hour)%>%
+  summarize(numflights_per_hour = n())%>%
+  ggplot(aes(x = hour, y = numflights_per_hour)) +
+    geom_line()
+```
+
+## Time spans and arithmetics
+>
+* durations, which represent an exact number of seconds.
+* periods, which represent human units like weeks and months.
+* intervals, which represent a starting and ending point.
+
+### Durations
+
+#### (1) Base R
+>
+* In R, when you subtract two dates, you get a difftime object:
+
+```{r}
+# How old are you?
+h_age <- today() - ymd(19971217)
+h_age
+```
+
+#### (2) Duration and convenient constructors
+
+```{r}
+
+as.duration(h_age) # change object to duration in seconds always
+
+# Convenient constructors
+dseconds(15)
+dminutes(10)
+dhours(c(12, 24))
+ddays(0:5)
+```
+
+#### (3) Arithmeric with duration
+
+```{r}
+# You can add and multiply durations:
+2 * dyears(1)
+
+dyears(1) + dweeks(12) + dhours(15)
+
+# add and subtract durations to and from days:
+tomorrow <- today() + ddays(1)
+tomorrow
+last_year <- today() - dyears(1)
+last_year
+
+# Unexpected result due to DST starting in March
+one_pm <- ymd_hms("2022-03-12 13:00:00", tz = "America/New_York")
+one_pm
+one_pm + ddays(1)
+```
+
+### Periods and constructors
+>
+* It solve the problem with duration coming from the use of seconds
+* Periods are time spans but don't have a fixed length in seconds, 
+* instead they work with "human" times, like *days and months*. 
+* That allows them to work in a more intuitive way:
+
+```{r}
+one_pm + days(1)
+
+seconds(15)
+minutes(10)
+hours(c(12, 24))
+days(7)
+months(1:6)
+weeks(3)
+years(1)
+```
+
+#### (1) Arithmetics
+
+```{r}
+# addition and multiplication
+10 * (months(6) + days(1))
+
+days(50) + hours(25) + minutes(2)
+
+#  Compared to durations, periods are more likely to do what you expect
+
+## A leap year
+ymd("2020-01-01") + dyears(1)
+ymd("2020-01-01") + years(1)
+
+## Daylight savings time  
+one_pm + ddays(1)
+one_pm + days(1)
+```
+
+#### (2) Application to flights data
+>
+*  fix an oddity related to our flight dates. Some planes appear to have arrived at their destination before they departed from New York City.
+
+```{r}
+# These are overnight flights
+flights %>% 
+  filter(arr_time < dep_time) # not the same # of rows as below deu to different metrics used.
+
+flights_dt %>% 
+  filter(arr_time < dep_time) 
+
+#  We used the same date information for both the departure and the arrival times, 
+#  but these flights arrived on the following day. We can fix this by adding days(1) 
+#  to the arrival time of each overnight flight.
+
+flights_dt <- flights_dt %>% 
+  mutate(overnight = arr_time < dep_time,
+         arr_time = arr_time + days(overnight * 1),
+         sched_arr_time = sched_arr_time + days(overnight * 1)
+         )
+
+flights_dt %>% 
+  filter(overnight, arr_time < dep_time)
+```
+
+
+### Intervals
+>
+* An interval is a duration with a starting point: that makes it precise so you can determine exactly how long it is
+
+```{r}
+dyears(1) / ddays(365) # obvious as duration uses 365 days worth of seconds
+
+years(1)/days(1) # not specific; periods give an estimate since leap years have 366 days
+
+# interval gives you an accurate measurement
+today() + years(1)
+next_year <- today() + years(1)
+(today() %--% next_year) / ddays(1)
+(today() %--% (today() + years(1))) / days(1)
+
+# Durations must be standardized lengths of time. 
+# There is no dmonths() since months do not have a standard number of days.
+(today() %--% (today() + years(1))) / dmonths(1) # not integer
+(today() %--% next_year) / months(1) # integer
+
+# how many periods fall into an interval? Do the integer division
+(today() %--% next_year) %/% days(1)
+```
+
+
+### Summary
+
+> How do you pick between duration, periods, and intervals? 
+>
+* As always, pick the simplest data structure that solves your problem. 
+* If you only care about physical time, use a duration; 
+* if you need to add human times, use a period; 
+* if you need to figure out how long a span is in human units, use an interval.
+
+## Time zones
+
+### (1) Basics
+>
+*  R uses the international standard IANA time zones:  "<continent>/<city>"
+  + Ex) "America/New_York", "Europe/Paris", and "Pacific/Auckland"
+* It's worth reading the raw time zone database (available at http://www.iana.org/time-zones)
+
+```{r}
+Sys.timezone()
+Sys.time()
+Sys.Date()
+
+# the complete list of all time zone names 
+length(OlsonNames())
+head(OlsonNames())
+```
+
+>
+* In R, the time zone is an attribute of the date-time that only controls printing. 
+* For example, these three objects represent the same instant in time:
+
+```{r}
+(x1 <- ymd_hms("2015-06-01 12:00:00", tz = "America/New_York"))
+
+(x2 <- ymd_hms("2015-06-01 18:00:00", tz = "Europe/Copenhagen"))
+
+(x3 <- ymd_hms("2015-06-02 04:00:00", tz = "Pacific/Auckland"))
+
+x1 - x2
+x1 - x3
+```
+
+>
+* lubridate always uses UTC. 
+* UTC (Coordinated Universal Time) is the standard time zone used by the scientific community and.
+
+```{r}
+# Operations that combine date-times, like c(), will often drop the time zone. 
+# In that case, the date-times will display in your local time zone:
+x4 <- c(x1, x2, x3)
+x4
+```
+
+### (2) Change time zone
+>
+* Keep the instant in time the same, and change how it's displayed. 
+* Use this when the instant is correct, but you want a more natural display.
+
+```{r}
+x4a <- with_tz(x4, tzone = "Australia/Lord_Howe")
+x4a
+
+x4a - x4
+```
+>
+* Change the underlying instant in time. 
+* Use this when you have an instant that has been labelled with the incorrect time zone, and you need to fix it.
+
+```{r}
+x4b <- force_tz(x4, tzone = "Australia/Lord_Howe")
+x4b
+
+x4b - x4
+```
+
+# Appendix
+
+## Grouping
+
+* You can use parentheses to override the default precedence rules:
+```{r}
+str_extract(c("grey", "gray"), "gre|ay")
+
+str_extract(c("grey", "gray"), "gr(e|a)y")
+```
+
+* Parenthesis also define "groups" that you can refer to with backreferences, like \1, \2 etc, and can be extracted with str_match(). 
+
+```{r}
+fruit %>% 
+  str_subset("(..)\\1")
+
+fruit %>% 
+  str_subset("(..)\\1") %>% 
+  str_match("(..)\\1")
+
+```
+>
+* You can use (?:...), *the non-grouping parentheses*, to control precedence but not capture the match in a group. This is slightly more efficient than capturing parentheses.
+
+```{r}
+str_match(c("grey", "gray"), "gr(e|a)y")
+
+str_match(c("grey", "gray"), "gr(?:e|a)y")
+```
+
+
+
+# References
+
+* R for Data Science: <https://r4ds.had.co.nz/dates-and-times.html#date-time-components>
+* R Regex Cheatsheet: <https://github.com/rstudio/cheatsheets/blob/main/regex.pdf>
+* Regular expressions: <https://stringr.tidyverse.org/articles/regular-expressions.html>
+* stringr overview: <https://stringr.tidyverse.org/>
+* glue overview: <https://glue.tidyverse.org/index.html>
+* Lubridate overview: <https://lubridate.tidyverse.org/>
+
